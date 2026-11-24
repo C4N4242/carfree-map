@@ -1,0 +1,17 @@
+# 地域設定の例。regions/<地域id>.toml として保存し、--region <地域id> で指定する。
+
+[region]
+name = "地域の表示名"
+timezone = "Asia/Tokyo"
+
+# GTFS（GTFS-JP を含む）フィード。複数書くと合算して計算する。
+# url: zip を直接指す URL / page: zip へのリンクが載っている配布ページ（先頭のリンクを使う）
+[[gtfs]]
+id = "bus_a"
+name = "A バス"
+url = "https://example.com/gtfs/bus_a.zip"
+
+[[gtfs]]
+id = "bus_b"
+name = "B バス"
+page = "https://example.com/opendata/"
