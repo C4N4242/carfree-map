@@ -1,0 +1,13 @@
+# 島根県松江市・出雲市
+
+[region]
+name = "島根県 松江市・出雲市"
+timezone = "Asia/Tokyo"
+
+# 松江市交通局（市営バス）と一畑バスの共同フィード。agency_id で事業者を区別できる。
+[[gtfs]]
+id = "matsue_ichibata"
+name = "松江市営バス・一畑バス"
+page = "https://matsue-bus.jp/opendata"
+
+# 未追加: 出雲市のコミュニティバス、一畑電車（公開状況を確認中）
