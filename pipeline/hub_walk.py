@@ -31,8 +31,24 @@ from pois import fetch_pois, load_categories
 from region import load_region
 from walk_network import build_walk_graph
 
+SNAP_K = 4             # 施設を結び付ける近くの点の数
+SOURCE_RADIUS_M = 80.0  # 停留所から出発点とみなす点の範囲 [m]
 METHODS = {"straight": "直線距離", "road_flat": "道路（坂なし）", "road_slope": "道路（坂あり）"}
 ATTRIBUTION = "地図データ © OpenStreetMap contributors (ODbL) / 標高: 国土地理院 標高タイル"
+
+
+def walk_times(G: nx.MultiDiGraph, start: dict, weight: str, cutoff: float) -> dict:
+    """初期時間つきの複数出発点から、各点までの最短徒歩時間 [秒]。"""
+    src = "__start__"
+    G.add_node(src)
+    for n, t0 in start.items():
+        G.add_edge(src, n, **{weight: t0})
+    try:
+        dist = nx.single_source_dijkstra_path_length(G, src, cutoff=cutoff, weight=weight)
+    finally:
+        G.remove_node(src)  # 仮の出発点と、そこから出る辺を取り除く
+    dist.pop(src, None)
+    return dist
 
 
 def hub_stops(region, hub: str) -> pd.DataFrame:
@@ -80,24 +96,33 @@ def main() -> None:
     node_xy = np.array([[Gp.nodes[n]["x"], Gp.nodes[n]["y"]] for n in node_ids])
     tree = cKDTree(node_xy)
     poi_xy = project_points(pois["lon"].values, pois["lat"].values, crs)
-    snap_d, snap_i = tree.query(poi_xy)
-    pois["node"] = node_ids[snap_i]
-    pois["snap_m"] = snap_d
+    # 施設は近くの複数の点に結び付け、いちばん早く着ける点を使う（建物の裏側の道に吸着するのを防ぐ）
+    k = min(SNAP_K, len(node_ids))
+    snap_d, snap_i = tree.query(poi_xy, k=k)
+    snap_d, snap_i = snap_d.reshape(len(pois), k), snap_i.reshape(len(pois), k)
+    pois["snap_m"] = snap_d[:, 0]
 
-    rows = []
+    rows, detour = [], {}
     for hub in region.hubs:
         stops = hub_stops(region, hub)
         stop_xy = project_points(stops["stop_lon"].values, stops["stop_lat"].values, crs)
-        src_d, src_i = tree.query(stop_xy)
-        sources = set(node_ids[src_i].tolist())
-        start_s = float(src_d.min()) / v0  # 停留所から最寄りの道路までの徒歩
+        # 停留所の周り SOURCE_RADIUS_M 以内の点をすべて出発点にし、そこまでの直線の徒歩時間を初期値にする
+        start = {}
+        for xy in stop_xy:
+            idx = set(tree.query_ball_point(xy, SOURCE_RADIUS_M)) | {int(tree.query(xy)[1])}
+            for i in idx:
+                n = node_ids[i]
+                t0 = float(np.hypot(*(node_xy[i] - xy))) / v0
+                start[n] = min(start.get(n, np.inf), t0)
 
         straight_m = cKDTree(stop_xy).query(poi_xy)[0]
         t = {"straight": straight_m / v0}
         for method, weight in (("road_flat", "walk_flat_s"), ("road_slope", "walk_s")):
-            dist = nx.multi_source_dijkstra_path_length(G, sources, cutoff=max_s, weight=weight)
-            node_t = pois["node"].map(dist).astype(float).values
-            t[method] = start_s + node_t + pois["snap_m"].values / v0  # 道路から施設までの徒歩を足す
+            node_t = walk_times(G, start, weight, max_s)
+            cand = np.array([[node_t.get(n, np.inf) for n in node_ids[row]] for row in snap_i])
+            t[method] = np.min(cand + snap_d / v0, axis=1)  # 道路から施設までの徒歩を足す
+        near = (t["straight"] > 60) & (t["straight"] <= max_s)
+        detour[hub] = float(np.median(t["road_flat"][near] / t["straight"][near])) if near.any() else float("nan")
         for minutes in w.minutes:
             for method, secs in t.items():
                 within = pois[np.nan_to_num(secs, nan=np.inf) <= minutes * 60]
@@ -109,12 +134,12 @@ def main() -> None:
     rd = region.results_dir
     rd.mkdir(parents=True, exist_ok=True)
     out.to_csv(rd / "hub_walk.csv", index=False, encoding="utf-8-sig")
-    pois.drop(columns=["node"]).sort_values(["category", "name"]).to_csv(rd / "poi_list.csv", index=False, encoding="utf-8-sig")
-    (rd / "walk_summary.md").write_text(summary_md(region, gstats, pois, out), encoding="utf-8")
+    pois.sort_values(["category", "name"]).to_csv(rd / "poi_list.csv", index=False, encoding="utf-8-sig")
+    (rd / "walk_summary.md").write_text(summary_md(region, gstats, pois, out, detour), encoding="utf-8")
     print((rd / "walk_summary.md").read_text(encoding="utf-8"))
 
 
-def summary_md(region, gstats: dict, pois: pd.DataFrame, out: pd.DataFrame) -> str:
+def summary_md(region, gstats: dict, pois: pd.DataFrame, out: pd.DataFrame, detour: dict) -> str:
     cats = load_categories()
     names = {c["id"]: c["name"] for c in cats}
     w = region.walk
@@ -145,6 +170,10 @@ def summary_md(region, gstats: dict, pois: pd.DataFrame, out: pd.DataFrame) -> s
         named = p["name"].notna().mean() if len(p) else 0
         far = (p["snap_m"] > 100).sum()
         lines.append(f"| {c['name']} | {len(p):,} | {named:.0%} | {far} |")
+    lines += ["", "## 迂回率（道路網での徒歩時間 ÷ 直線距離での徒歩時間、中央値）", "",
+              "直線距離で1〜" + str(max(w.minutes)) + "分の施設について求めた値。1より大きいほど、直線距離では近く見積もりすぎる。", "",
+              "| 起点 | 迂回率 |", "|---|---|"]
+    lines += [f"| {h} | {v:.2f} |" for h, v in detour.items()]
     for minutes in w.minutes:
         lines += ["", f"## 起点から徒歩{minutes}分で届く施設の数", "", "| 起点 | 方法 | " + " | ".join(names[c["id"]] for c in cats) + " |",
                   "|---|---|" + "---|" * len(cats)]
