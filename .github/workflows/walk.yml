@@ -1,0 +1,51 @@
+name: walk analysis
+
+# 道路網・標高・施設を取得し、起点から歩いて届く施設の数を計算して results/<地域id>/ にコミットする。
+# Actions タブ → "walk analysis" → "Run workflow" で、実行するブランチと地域を指定する。
+on:
+  workflow_dispatch:
+    inputs:
+      region:
+        description: "地域id（regions/<id>.toml）"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  walk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+      - run: pip install -r pipeline/requirements.txt -r requirements-dev.txt
+      - name: 単体テスト
+        run: python -m pytest -q tests
+      # OpenStreetMap と標高タイルへの問い合わせを減らすため、取得済みデータを再利用する
+      - uses: actions/cache@v4
+        with:
+          path: |
+            data/raw/osm_cache
+            data/raw/dem
+          key: walk-${{ inputs.region }}-${{ hashFiles(format('regions/{0}.toml', inputs.region), 'pipeline/poi_categories.toml') }}
+          restore-keys: walk-${{ inputs.region }}-
+      - name: GTFS をダウンロード
+        run: python pipeline/fetch_data.py --region "${{ inputs.region }}"
+      - name: 徒歩圏を計算
+        run: python pipeline/hub_walk.py --region "${{ inputs.region }}"
+      - name: 結果をジョブの概要に表示
+        run: cat "results/${{ inputs.region }}/walk_summary.md" >> "$GITHUB_STEP_SUMMARY"
+      # 計算結果のみを保存する（元の時刻表データや道路網は含めない）
+      - name: 結果をコミット
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "results/${{ inputs.region }}"
+          git diff --cached --quiet || git commit -m "結果: ${{ inputs.region }} 徒歩圏の集計"
+          git pull --rebase
+          git push

@@ -22,6 +22,15 @@ GTFS（GTFS-JP を含む）と地図データがあれば、どの地域にも�
 - **公共交通**: 時刻表どおりに乗り継ぎ、指定時刻に出発して一定時間内に着ける範囲を求める。最終便から逆算し、起点に戻れる最終時刻も求める。
 - **施設の集計**: 範囲内の施設を種類ごとに数え、重みを付けて点数化する。重みはアプリ上で変更できる。
 
+## 計算の手順と出力
+
+| 手順 | スクリプト | Actions | 出力（`results/<地域id>/`） |
+|---|---|---|---|
+| 1. 時刻表の取得と起点候補の順位付け | `fetch_data.py`, `gtfs_hubs.py` | data pipeline | `hub_ranking_<日付>.csv` |
+| 2. 道路網・標高・施設の取得と徒歩圏の集計 | `hub_walk.py` | walk analysis | `walk_summary.md`, `hub_walk.csv`, `poi_list.csv` |
+
+手順2では、起点から徒歩5・10・15分で届く施設の数を、直線距離・道路網（坂なし）・道路網（坂あり）の3通りで比べる。施設の分類と対応する OpenStreetMap のタグは `pipeline/poi_categories.toml` で定義する。
+
 ## 地域の追加
 
 1. `regions/example.toml` を参考に `regions/<地域id>.toml` を作る。
@@ -39,8 +48,19 @@ Actions タブ → **data pipeline** → **Run workflow** で、ブランチ・�
 pip install -r pipeline/requirements.txt
 python pipeline/fetch_data.py --region <地域id>                    # 時刻表データを data/raw/ に保存
 python pipeline/gtfs_hubs.py --region <地域id> --date 2026-12-01   # 停留所ごとの発車本数ランキング
+python pipeline/hub_walk.py --region <地域id>                      # 徒歩圏の集計（bbox と hubs が必要）
+```
+
+テスト（ネットワーク接続なし）:
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests
 ```
 
 ## ライセンスと出典
 
 時刻表などの元データはリポジトリに含めない。各データの利用条件は配布元に従う。地域ごとの出典は、各地域ブランチの README に記載する。
+
+- 地図データ・施設データ: © OpenStreetMap contributors（ODbL）
+- 標高: 国土地理院 標高タイル（https://maps.gsi.go.jp/development/demtile.html）

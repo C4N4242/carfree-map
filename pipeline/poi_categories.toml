@@ -1,0 +1,32 @@
+# 施設の分類と、対応する OpenStreetMap のタグ。
+# 1つの施設が複数の分類に当てはまる場合は、上に書いた分類を優先する。
+
+[[category]]
+id = "medical"
+name = "医療"
+tags = { amenity = ["hospital", "clinic", "doctors", "dentist", "pharmacy"] }
+
+[[category]]
+id = "grocery"
+name = "スーパー"
+tags = { shop = ["supermarket"] }
+
+[[category]]
+id = "commercial"
+name = "商業施設"
+tags = { shop = ["mall", "department_store"] }
+
+[[category]]
+id = "convenience"
+name = "コンビニ"
+tags = { shop = ["convenience"] }
+
+[[category]]
+id = "entertainment"
+name = "娯楽"
+tags = { amenity = ["cinema", "karaoke_box", "theatre", "nightclub"], leisure = ["amusement_arcade", "bowling_alley"] }
+
+[[category]]
+id = "food"
+name = "飲食"
+tags = { amenity = ["restaurant", "cafe", "fast_food", "food_court", "pub", "bar", "ice_cream"] }
