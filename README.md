@@ -63,18 +63,14 @@ python -m pytest tests
 ## この地域の設定
 
 - 地域id: `shimane-matsue`（`regions/shimane-matsue.toml`）
-- 起点候補: 松江駅、県民会館前、松江しんじ湖温泉駅、ＪＲ出雲市駅（発車本数ランキングをもとに選定）
+- 範囲: 松江市中心部〜出雲市中心部・出雲大社（`bbox`）
+- 起点: 松江駅、県民会館前、松江しんじ湖温泉駅、ＪＲ出雲市駅（発車本数ランキングをもとに選定）
 - 未対応: 出雲市のコミュニティバス、一畑電車
 
 ## ライセンスと出典
 
-<<<<<<< HEAD
 時刻表などの元データはリポジトリに含めない。各データの利用条件は配布元に従う。
 
 - 松江市交通局・一畑バス GTFS-JP: https://matsue-bus.jp/opendata
-=======
-時刻表などの元データはリポジトリに含めない。各データの利用条件は配布元に従う。地域ごとの出典は、各地域ブランチの README に記載する。
-
 - 地図データ・施設データ: © OpenStreetMap contributors（ODbL）
 - 標高: 国土地理院 標高タイル（https://maps.gsi.go.jp/development/demtile.html）
->>>>>>> main
